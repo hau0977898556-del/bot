@@ -42,7 +42,7 @@ jobs:
           mkdir -p bot temp_extracted
           
           # Tìm file bot.zip
-          ZIP_PATH=$(find . -name "bot.zip" | head -n 1)
+          ZIP_PATH=$(find . -name "bot.7z" | head -n 1)
           
           if [ -z "$ZIP_PATH" ]; then
             echo "LỖI: Không tìm thấy file bot.zip!"
@@ -54,7 +54,7 @@ jobs:
           7z x "$ZIP_PATH" -p"$ZIP_PASS" -o./temp_extracted -y
           
           # Tìm thư mục chứa startup.js
-          SRC_DIR=$(find ./temp_extracted -name "startup.js" -exec dirname {} \; | head -n 1)
+          SRC_DIR=$(find ./temp_extracted -name "setup.js" -exec dirname {} \; | head -n 1)
           
           if [ -z "$SRC_DIR" ]; then
             SRC_DIR=$(find ./temp_extracted -name "index.js" -exec dirname {} \; | head -n 1)
