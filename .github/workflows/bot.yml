@@ -1,0 +1,49 @@
+name: Run Discord Bot
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Cho phép bấm nút "Run workflow" thủ công trên GitHub
+
+jobs:
+  start-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Kéo source code từ repo về
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Cài đặt Python (Cần thiết để build các thư viện native như @discordjs/opus, sodium-native)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Cài đặt Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 4. Tạo thư mục /bot và copy toàn bộ source vào
+      - name: Setup bot directory & Copy source
+        run: |
+          mkdir -p bot
+          # Dùng rsync để copy tránh bị đệ quy lặp lại thư mục bot
+          rsync -av --exclude='bot' --exclude='.git' ./ bot/
+
+      # 5. Cài đặt các gói phụ thuộc (Dependencies)
+      - name: Install dependencies
+        working-directory: ./bot
+        run: |
+          npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9
+
+      # 6. cd vào /bot và chạy index.js
+      - name: Start Bot
+        working-directory: ./bot
+        env:
+          # Lấy Token từ mục Settings -> Secrets and variables -> Actions
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: |
+          node index.js
