@@ -34,19 +34,40 @@ jobs:
         with:
           node-version: 20
 
-      # 5. Giải nén bot.7z thẳng vào thư mục làm việc
+      # 5. Giải nén bot.7z và tự động đưa toàn bộ code ra ngoài thư mục gốc
       - name: Extract bot.7z
         env:
           ZIP_PASS: ${{ secrets.ZIP_PASSWORD }}
         run: |
           ARCHIVE_PATH=$(find . -name "bot.7z" | head -n 1)
           if [ -z "$ARCHIVE_PATH" ]; then
-            echo "LỖI: Không tìm thấy file bot.7z!"
+            echo "❌ LỖI: Không tìm thấy file bot.7z trong repo!"
             exit 1
           fi
           
-          echo "Đang giải nén $ARCHIVE_PATH..."
+          echo "📦 Đang giải nén $ARCHIVE_PATH..."
           7z x "$ARCHIVE_PATH" -p"$ZIP_PASS" -o. -y -aoa
+          
+          # Tự động tìm vị trí của file index.js
+          INDEX_FILE=$(find . -name "index.js" -not -path "*/.git/*" | head -n 1)
+          
+          if [ -z "$INDEX_FILE" ]; then
+            echo "❌ LỖI: Không tìm thấy file index.js sau khi giải nén!"
+            echo "Danh sách file thực tế trong file nén:"
+            find . -maxdepth 3 -not -path "*/.git*"
+            exit 1
+          fi
+          
+          # Nếu file index.js bị bọc trong thư mục con, kéo toàn bộ ra ngoài gốc
+          TARGET_DIR=$(dirname "$INDEX_FILE")
+          if [ "$TARGET_DIR" != "." ]; then
+            echo "👉 Phát hiện code nằm trong '$TARGET_DIR', đang chuyển toàn bộ ra ngoài gốc..."
+            cp -r "$TARGET_DIR"/* ./
+            rm -rf "$TARGET_DIR"
+          fi
+          
+          echo "=== Danh sách file ở thư mục gốc ==="
+          ls -la
 
       # 6. Cài đặt các thư viện dependencies
       - name: Install Dependencies
