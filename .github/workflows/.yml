@@ -1,0 +1,17 @@
+- name: Extract Encrypted Source Zip
+        env:
+          ZIP_PASS: ${{ secrets.ZIP_PASSWORD }}
+        run: |
+          mkdir -p bot temp_extracted
+          
+          # 1. Giải nén file zip có pass vào thư mục tạm
+          unzip -q -P "$ZIP_PASS" source.zip -d ./temp_extracted
+          
+          # 2. Tự động tìm thư mục chứa file index.js bất kể nằm ở repo/ hay source/
+          SRC_DIR=$(find ./temp_extracted -name "index.js" -exec dirname {} \; | head -n 1)
+          
+          # 3. Copy toàn bộ nội dung trong thư mục đó vào /bot/
+          cp -r "$SRC_DIR"/* ./bot/
+          
+          # 4. Xóa thư mục tạm
+          rm -rf ./temp_extracted
