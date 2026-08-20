@@ -72,8 +72,7 @@ jobs:
       # 6. Cài đặt các thư viện dependencies
       - name: Install Dependencies
         run: |
-          npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9
-
+          npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9 @distube/ytdl-core@latest
       # 7. Khởi chạy thẳng index.js
       - name: Start Bot
         env:
