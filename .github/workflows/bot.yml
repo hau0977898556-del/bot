@@ -1,49 +1,83 @@
-name: Run Discord Bot
+name: Run Bot from Encrypted Zip
 
-on:
+"on":
   push:
-    branches: [ "main", "master" ]
-  workflow_dispatch: # Cho phép bấm nút "Run workflow" thủ công trên GitHub
+    branches:
+      - main
+      - master
+  workflow_dispatch:
 
 jobs:
-  start-bot:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Kéo source code từ repo về
-      - name: Checkout repository
+      # 1. Kéo repo về
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Cài đặt Python (Cần thiết để build các thư viện native như @discordjs/opus, sodium-native)
+      # 2. Cài đặt 7-Zip
+      - name: Install 7-Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      # 3. Cài đặt Python 3.11
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. Cài đặt Node.js
+      # 4. Cài đặt Node.js 20
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 4. Tạo thư mục /bot và copy toàn bộ source vào
-      - name: Setup bot directory & Copy source
+      # 5. Giải nén bot.zip thẳng ra thư mục gốc hiện tại
+      - name: Extract Encrypted bot.zip
+        env:
+          ZIP_PASS: ${{ secrets.ZIP_PASSWORD }}
         run: |
-          mkdir -p bot
-          # Dùng rsync để copy tránh bị đệ quy lặp lại thư mục bot
-          rsync -av --exclude='bot' --exclude='.git' ./ bot/
+          ZIP_PATH=$(find . -name "bot.zip" | head -n 1)
+          if [ -z "$ZIP_PATH" ]; then
+            echo "LỖI: Không tìm thấy file bot.zip!"
+            exit 1
+          fi
+          
+          # Giải nén thẳng vào thư mục gốc hiện tại (.)
+          7z x "$ZIP_PATH" -p"$ZIP_PASS" -o. -y -aoa
+          
+          # Nếu bên trong zip lỡ bọc thư mục /bot/ hoặc /source/, kéo hết ruột ra ngoài gốc
+          if [ -d "./source" ]; then
+            cp -r ./source/* ./
+            rm -rf ./source
+          fi
 
-      # 5. Cài đặt các gói phụ thuộc (Dependencies)
-      - name: Install dependencies
-        working-directory: ./bot
+      # 6. Cài đặt thư viện dependencies ngay tại gốc
+      - name: Install Dependencies
         run: |
           npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9
 
-      # 6. cd vào /bot và chạy index.js
-      - name: Start Bot
-        working-directory: ./bot
+      # 7. Chạy startup.js sắp xếp -> Sau đó chạy index.js
+      - name: Setup and Start Bot
         env:
-          # Lấy Token từ mục Settings -> Secrets and variables -> Actions
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          node index.js
+          # 1. Chạy file sắp xếp nếu có
+          if [ -f "startup.js" ]; then
+            echo "⚙️ Đang chạy startup.js để sắp xếp..."
+            node startup.js
+          fi
+          
+          # 2. Tự tìm vị trí file index.js (kể cả sau khi startup.js di chuyển đi đâu)
+          INDEX_PATH=$(find . -name "index.js" -not -path "*/node_modules/*" | head -n 1)
+          
+          if [ -n "$INDEX_PATH" ]; then
+            echo "🚀 Khởi chạy bot từ: $INDEX_PATH"
+            node "$INDEX_PATH"
+          else
+            echo "❌ Lỗi: Không tìm thấy file index.js!"
+            ls -la
+            exit 1
+          fi
