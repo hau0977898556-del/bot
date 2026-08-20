@@ -1,4 +1,4 @@
-name: Run Bot from Encrypted 7z
+name: Run Discord Bot
 
 "on":
   push:
@@ -34,53 +34,28 @@ jobs:
         with:
           node-version: 20
 
-      # 5. Giải nén bot.7z thẳng ra thư mục gốc
-      - name: Extract Encrypted bot.7z
+      # 5. Giải nén bot.7z thẳng vào thư mục làm việc
+      - name: Extract bot.7z
         env:
           ZIP_PASS: ${{ secrets.ZIP_PASSWORD }}
         run: |
-          # Tìm file bot.7z
           ARCHIVE_PATH=$(find . -name "bot.7z" | head -n 1)
-          
           if [ -z "$ARCHIVE_PATH" ]; then
-            echo "LỖI: Không tìm thấy file bot.7z trong repo!"
+            echo "LỖI: Không tìm thấy file bot.7z!"
             exit 1
           fi
           
-          echo "Đang giải nén: $ARCHIVE_PATH"
-          # Giải nén thẳng vào thư mục gốc hiện tại (.)
+          echo "Đang giải nén $ARCHIVE_PATH..."
           7z x "$ARCHIVE_PATH" -p"$ZIP_PASS" -o. -y -aoa
-          
-          # Nếu trong file nén có bọc thư mục /source/, chuyển hết ra ngoài gốc
-          if [ -d "./source" ]; then
-            cp -r ./source/* ./
-            rm -rf ./source
-          fi
 
       # 6. Cài đặt các thư viện dependencies
       - name: Install Dependencies
         run: |
           npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9
 
-      # 7. Chạy startup.js sắp xếp -> Sau đó chạy index.js
-      - name: Setup and Start Bot
+      # 7. Khởi chạy thẳng index.js
+      - name: Start Bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # 1. Chạy file sắp xếp nếu có
-          if [ -f "startup.js" ]; then
-            echo "⚙️ Đang chạy startup.js để sắp xếp..."
-            node startup.js
-          fi
-          
-          # 2. Tự tìm vị trí file index.js và khởi động
-          INDEX_PATH=$(find . -name "index.js" -not -path "*/node_modules/*" | head -n 1)
-          
-          if [ -n "$INDEX_PATH" ]; then
-            echo "🚀 Khởi chạy bot từ: $INDEX_PATH"
-            node "$INDEX_PATH"
-          else
-            echo "❌ Lỗi: Không tìm thấy file index.js!"
-            ls -la
-            exit 1
-          fi
+          node index.js
