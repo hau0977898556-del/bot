@@ -12,61 +12,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Kéo toàn bộ repo về
+      # 1. Kéo repository về
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Cài đặt Python 3.11
+      # 2. Cài đặt 7-Zip (để giải nén AES-256 không bị lỗi 81)
+      - name: Install 7-Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      # 3. Cài đặt Python 3.11
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. Cài đặt Node.js 20
+      # 4. Cài đặt Node.js 20
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 4. Tự tìm và giải nén file bot.zip có mật khẩu
+      # 5. Giải nén file bot.zip bằng 7z
       - name: Extract Encrypted bot.zip
         env:
           ZIP_PASS: ${{ secrets.ZIP_PASSWORD }}
         run: |
           mkdir -p bot temp_extracted
           
-          # Tự động tìm đường dẫn file bot.zip (bất kể nằm ở root hay trong folder repo/)
+          # Tìm file bot.zip
           ZIP_PATH=$(find . -name "bot.zip" | head -n 1)
           
           if [ -z "$ZIP_PATH" ]; then
-            echo "LỖI: Không tìm thấy file bot.zip trong repository!"
+            echo "LỖI: Không tìm thấy file bot.zip!"
             exit 1
           fi
           
-          echo "Đang giải nén file: $ZIP_PATH"
-          unzip -q -P "$ZIP_PASS" "$ZIP_PATH" -d ./temp_extracted
+          echo "Đang giải nén file: $ZIP_PATH bằng 7-Zip..."
+          # Dùng 7z giải nén (hỗ trợ AES-256, -p truyền mật khẩu, -o thư mục đích)
+          7z x "$ZIP_PATH" -p"$ZIP_PASS" -o./temp_extracted -y
           
-          # Tự động tìm vị trí của startup.js
+          # Tìm thư mục chứa startup.js
           SRC_DIR=$(find ./temp_extracted -name "startup.js" -exec dirname {} \; | head -n 1)
           
           if [ -z "$SRC_DIR" ]; then
             SRC_DIR=$(find ./temp_extracted -name "index.js" -exec dirname {} \; | head -n 1)
           fi
           
-          # Di chuyển toàn bộ code vào thư mục bot/
+          # Copy toàn bộ code vào thư mục bot/
           cp -r "$SRC_DIR"/* ./bot/
           rm -rf ./temp_extracted
 
-      # 5. Cài đặt thư viện dependencies vào thư mục bot/
+      # 6. Cài đặt thư viện dependencies
       - name: Install Dependencies
         working-directory: ./bot
         run: |
           npm install acorn@^8.11.3 acorn-walk@^8.3.2 discord.js@^14.16.0 dotenv@^16.4.5 @discordjs/opus@^0.9.0 @discordjs/voice@^0.18.0 ffmpeg-static@^5.2.0 sodium-native@^4.0.9
 
-      # 6. Khởi chạy bot bằng startup.js
+      # 7. Khởi chạy bot bằng startup.js
       - name: Start Bot
         working-directory: ./bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          node startup.js
+          node setup.js
