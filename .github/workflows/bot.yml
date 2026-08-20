@@ -46,4 +46,4 @@ jobs:
           # Lấy Token từ mục Settings -> Secrets and variables -> Actions
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          node setup.js
+          node index.js
