@@ -1,4 +1,4 @@
-name: Windows RDP Ngrok (Mobile & PC)
+name: Windows RDP Ngrok (Direct IP Fix 0x104)
 
 on:
   workflow_dispatch:
@@ -6,12 +6,12 @@ on:
     types: [create-vps]
 
 # ================================================================
-# ⚙️ TOÀN BỘ CẤU HÌNH GOM HẾT Ở ĐÂY
+# ⚙️ CẤU HÌNH GOM HẾT Ở ĐÂY
 # ================================================================
 env:
   # 👤 Tài khoản đăng nhập trên app điện thoại
   RDP_USER: "zeraa"
-  RDP_PASSWORD: "Zeraa@Pass12345" # Mật khẩu (bắt buộc: hoa, thường, số, ký tự đặc biệt)
+  RDP_PASSWORD: "Zeraa@Pass12345"
 
   # 🔑 Token xác thực
   NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -35,25 +35,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🔓 Kích hoạt RDP, Mở Tường Lửa & Tạo User
+      - name: 🔓 Kích hoạt & Khởi động Dịch vụ RDP
         shell: pwsh
         run: |
-          Write-Host "🔧 1. Bật tính năng Remote Desktop..."
+          Write-Host "🔧 1. Bật và khởi động dịch vụ TermService..."
+          Set-Service -Name "TermService" -StartupType Automatic
+          Start-Service -Name "TermService" -ErrorAction SilentlyContinue
+
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
 
-          Write-Host "🔥 2. Mở Firewall cho cổng RDP 3389..."
+          Write-Host "🔥 2. Mở Firewall cổng 3389..."
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="Allow RDP 3389" dir=in action=allow protocol=TCP localport=3389
 
-          Write-Host "👤 3. Tạo tài khoản '$env:RDP_USER'..."
+          Write-Host "👤 3. Tạo user: $env:RDP_USER..."
           net user $env:RDP_USER "$env:RDP_PASSWORD" /add
           net localgroup Administrators $env:RDP_USER /add
           net localgroup "Remote Desktop Users" $env:RDP_USER /add
           net user runneradmin "$env:RDP_PASSWORD"
-          Write-Host "✅ Cấu hình Windows RDP thành công!"
+          Write-Host "✅ Dịch vụ Windows RDP đã chạy!"
 
-      - name: 🌐 Khởi chạy Ngrok TCP Tunnel (Port 3389)
+      - name: 🌐 Khởi chạy Ngrok & Phân giải IP số
         shell: pwsh
         run: |
           if (-not $env:NGROK_AUTH_TOKEN) {
@@ -61,58 +64,70 @@ jobs:
             exit 1
           }
 
-          Write-Host "📥 1. Đang tải Ngrok..."
+          Write-Host "📥 Đang tải Ngrok..."
           Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip" -TimeoutSec 60
           Expand-Archive -Path "ngrok.zip" -DestinationPath "." -Force
 
-          Write-Host "🔑 2. Cấu hình Ngrok Authtoken..."
+          Write-Host "🔑 Cấu hình Ngrok Authtoken..."
           .\ngrok.exe config add-authtoken "$env:NGROK_AUTH_TOKEN"
 
-          Write-Host "🚀 3. Khởi động Ngrok TCP Tunnel..."
+          Write-Host "🚀 Khởi động Tunnel RDP..."
           Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -RedirectStandardOutput "ngrok.log" -WindowStyle Hidden
           Start-Sleep -Seconds 8
 
           $maxAttempts = 15
-          $rdpHost = ""
+          $rdpDomain = ""
           for ($i = 1; $i -le $maxAttempts; $i++) {
             try {
               $response = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels" -TimeoutSec 5
               if ($response.tunnels -and $response.tunnels.Count -gt 0) {
-                $rdpHost = $response.tunnels[0].public_url -replace "tcp://", ""
+                $rdpDomain = $response.tunnels[0].public_url -replace "tcp://", ""
                 break
               }
             } catch {
-              Write-Host "⏳ Đang kết nối Ngrok... ($i/$maxAttempts)"
               Start-Sleep -Seconds 2
             }
           }
 
-          if (-not $rdpHost) {
-            Write-Host "❌ Không lấy được URL Ngrok! Log chi tiết:"
+          if (-not $rdpDomain) {
+            Write-Host "❌ Không lấy được URL Ngrok!"
             Get-Content "ngrok.log" -ErrorAction SilentlyContinue | Write-Host
             exit 1
           }
 
+          # Tách Host và Port để lấy IP số
+          $hostParts = $rdpDomain -split ':'
+          $hostName = $hostParts[0]
+          $port = $hostParts[1]
+          
+          try {
+            $resolvedIP = [System.Net.Dns]::GetHostAddresses($hostName)[0].IPAddressToString
+            $directIP = "$resolvedIP`:$port"
+          } catch {
+            $directIP = $rdpDomain
+          }
+
           Write-Host "=========================================================="
-          Write-Host "🎉 THÔNG TIN NHẬP VÀO WINDOWS APP TRÊN ĐIỆN THOẠI:"
-          Write-Host "📌 PC name / Host : $rdpHost"
-          Write-Host "👤 User account   : $env:RDP_USER"
-          Write-Host "🔑 Password       : $env:RDP_PASSWORD"
+          Write-Host "🎉 THÔNG TIN NHẬP VÀO APP TRÊN ĐIỆN THOẠI:"
+          Write-Host "👉 CÁCH 1 (KHUYÊN DÙNG - BỎ QUA CHẶN MẠNG VN):"
+          Write-Host "📌 PC name (IP số) : $directIP"
+          Write-Host ""
+          Write-Host "👉 CÁCH 2 (Tên miền gốc):"
+          Write-Host "📌 PC name (Domain): $rdpDomain"
+          Write-Host ""
+          Write-Host "👤 User account    : $env:RDP_USER"
+          Write-Host "🔑 Password        : $env:RDP_PASSWORD"
           Write-Host "=========================================================="
 
-          # Lưu file rdp-info.txt lên GitHub (bọc an toàn tránh crash)
           try {
-            $rdpHost | Out-File -FilePath "rdp-info.txt" -Encoding UTF8
+            $directIP | Out-File -FilePath "rdp-info.txt" -Encoding UTF8
             git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git config --global user.name "github-actions[bot]"
             git add rdp-info.txt
-            git commit -m "🔗 Cập nhật IP RDP: $rdpHost" --allow-empty | Out-Null
+            git commit -m "🔗 Cập nhật IP: $directIP" --allow-empty | Out-Null
             git pull --rebase origin main --autostash 2>$null | Out-Null
             git push origin main --force 2>$null | Out-Null
-            Write-Host "✅ Đã lưu Host vào rdp-info.txt trên repo!"
-          } catch {
-            Write-Host "⚠️ Bỏ qua commit: $_"
-          }
+          } catch {}
           
           $LASTEXITCODE = 0
 
